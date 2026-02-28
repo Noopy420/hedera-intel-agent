@@ -26,6 +26,7 @@ const { HederaService } = require("./src/hedera");
 const { IntelEngine } = require("./src/intel");
 const { NetworkAnalytics } = require("./src/network");
 const { AgentProtocol } = require("./src/agent-protocol");
+const { OpenConvAIAgent } = require("./src/hcs10");
 const fs = require("fs");
 const path = require("path");
 
@@ -317,6 +318,116 @@ async function listen() {
   await protocol.startListening();
 }
 
+// ─── HCS-10 OpenConvAI Commands ─────────────────────────────────────────────
+
+async function openconvai() {
+  console.log("\n╔══════════════════════════════════════════════════╗");
+  console.log("║   HederaIntel — HCS-10 OpenConvAI Agent Setup    ║");
+  console.log("╠══════════════════════════════════════════════════╣");
+  console.log("║  Registers in the Hashgraph Online (HOL) global  ║");
+  console.log("║  agent registry and starts listening for queries. ║");
+  console.log("╚══════════════════════════════════════════════════╝\n");
+
+  const agent = new OpenConvAIAgent(intel, network);
+  await agent.initialize(CONFIG.accountId, CONFIG.privateKey, CONFIG.network);
+
+  // Check for existing HCS-10 topics
+  const hcs10Inbound = process.env.HCS10_INBOUND_TOPIC_ID;
+  const hcs10Outbound = process.env.HCS10_OUTBOUND_TOPIC_ID;
+
+  if (hcs10Inbound && hcs10Outbound) {
+    agent.setTopics(hcs10Inbound, hcs10Outbound);
+    console.log("[Agent] Using existing HCS-10 topics.");
+  } else {
+    console.log("[Agent] Creating new HCS-10 topics...");
+    const topics = await agent.createTopics();
+
+    // Save to .env
+    const envPath = path.join(__dirname, ".env");
+    if (fs.existsSync(envPath)) {
+      let envContent = fs.readFileSync(envPath, "utf-8");
+      envContent += `\nHCS10_INBOUND_TOPIC_ID=${topics.inboundTopicId}\n`;
+      envContent += `HCS10_OUTBOUND_TOPIC_ID=${topics.outboundTopicId}\n`;
+      fs.writeFileSync(envPath, envContent);
+    }
+  }
+
+  // Register in HOL global registry
+  const isRegistered = process.env.HCS10_REGISTERED === "true";
+  if (!isRegistered) {
+    const result = await agent.register();
+    console.log(`\n[Agent] Registered in HOL Registry!`);
+    console.log(`[Agent] Operator: ${result.operatorId}`);
+    console.log(`[Agent] Verify: ${result.hashscanUrl}\n`);
+
+    // Mark as registered
+    const envPath = path.join(__dirname, ".env");
+    if (fs.existsSync(envPath)) {
+      let envContent = fs.readFileSync(envPath, "utf-8");
+      envContent += `\nHCS10_REGISTERED=true\n`;
+      fs.writeFileSync(envPath, envContent);
+    }
+  } else {
+    console.log("[Agent] Already registered in HOL Registry.");
+  }
+
+  // Start listening
+  console.log("\nStarting OpenConvAI listener...");
+  console.log("Other agents and humans can now discover and query this agent");
+  console.log("through the HOL Registry on Hedera.\n");
+  console.log("Press Ctrl+C to stop.\n");
+
+  await agent.startListening();
+}
+
+async function chat() {
+  console.log("\n[HederaIntel] Starting chat mode...\n");
+
+  const agent = new OpenConvAIAgent(intel, network);
+
+  // If credentials are available, connect to Hedera for timestamping
+  if (CONFIG.accountId && CONFIG.privateKey) {
+    try {
+      await agent.initialize(CONFIG.accountId, CONFIG.privateKey, CONFIG.network);
+
+      const hcs10Outbound = process.env.HCS10_OUTBOUND_TOPIC_ID || CONFIG.topicId;
+      if (hcs10Outbound) {
+        agent.outboundTopicId = hcs10Outbound;
+        console.log(`[HederaIntel] Connected to Hedera. Responses will be timestamped.\n`);
+      }
+    } catch (err) {
+      console.log(`[HederaIntel] Running in offline mode (no Hedera connection).\n`);
+    }
+  } else {
+    console.log(`[HederaIntel] Running in offline mode. Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY to enable on-chain timestamping.\n`);
+  }
+
+  await agent.startChat();
+}
+
+async function queryAgent() {
+  const targetTopic = process.argv[3];
+  const queryText = process.argv.slice(4).join(" ") || "Give me a market report";
+
+  if (!targetTopic) {
+    console.error("Usage: node index.js query <target-inbound-topic-id> <query text>");
+    process.exit(1);
+  }
+
+  const agent = new OpenConvAIAgent(intel, network);
+  await agent.initialize(CONFIG.accountId, CONFIG.privateKey, CONFIG.network);
+
+  const hcs10Inbound = process.env.HCS10_INBOUND_TOPIC_ID;
+  const hcs10Outbound = process.env.HCS10_OUTBOUND_TOPIC_ID;
+  if (hcs10Inbound && hcs10Outbound) {
+    agent.setTopics(hcs10Inbound, hcs10Outbound);
+  }
+
+  console.log(`[Agent] Sending query to ${targetTopic}: "${queryText}"`);
+  const result = await agent.queryAgent(targetTopic, queryText);
+  console.log(`[Agent] ✅ Query sent! TX: ${result.transactionId}`);
+}
+
 // ─── CLI Router ─────────────────────────────────────────────────────────────
 
 const command = process.argv[2] || "help";
@@ -329,9 +440,13 @@ const commands = {
   subscribe,
   info,
   demo,
+  openconvai,
+  chat,
+  query: queryAgent,
   help: () => {
     console.log(`
 HederaIntel Agent — Autonomous Market Intelligence on Hedera
+Version 2.0 — Now with HCS-10 OpenConvAI Support!
 
 Usage:
   node index.js setup        Create a new HCS topic
@@ -341,26 +456,43 @@ Usage:
   node index.js subscribe    Live-stream reports from the topic
   node index.js info         Show topic info and stats
   node index.js demo         Run a full demo (setup + 3 reports)
+
+  HCS-10 OpenConvAI:
+  node index.js openconvai   Register in HOL Registry & start OpenConvAI listener
+  node index.js chat         Interactive chat with market intelligence
+  node index.js query <topic> <text>  Query another HCS-10 agent
+
   node index.js help         Show this help message
 
 Environment Variables (set in .env):
-  HEDERA_ACCOUNT_ID    Your Hedera testnet account ID
-  HEDERA_PRIVATE_KEY   Your Hedera private key
-  HEDERA_NETWORK       testnet or mainnet (default: testnet)
-  HEDERA_TOPIC_ID      Existing topic ID (optional)
+  HEDERA_ACCOUNT_ID          Your Hedera testnet account ID
+  HEDERA_PRIVATE_KEY         Your Hedera private key
+  HEDERA_NETWORK             testnet or mainnet (default: testnet)
+  HEDERA_TOPIC_ID            Existing topic ID (optional)
+  HCS10_INBOUND_TOPIC_ID     HCS-10 inbound topic (auto-created)
+  HCS10_OUTBOUND_TOPIC_ID    HCS-10 outbound topic (auto-created)
+  HCS10_REGISTERED           Whether agent is registered in HOL (auto-set)
 
-Agent Protocol:
-  Other agents can query this agent via HCS messages.
-  Query types: market_report, price_check, narrative_detection, capabilities
+Protocols:
+  Custom Protocol — Direct agent queries via HCS topic messages
+  HCS-10 OpenConvAI — Hashgraph Online standard for agent discovery & chat
+    Query types: market_report, price_check, narrative_detection,
+                 hedera_network_stats, natural_language_query
+
+Built for Hedera Hello Future Apex Hackathon 2026.
+Track: AI & Agents | Bounty: Hashgraph Online
 `);
   },
 };
 
 if (commands[command]) {
-  commands[command]().catch((err) => {
-    console.error(`\n❌ Error: ${err.message}`);
-    process.exit(1);
-  });
+  const result = commands[command]();
+  if (result && typeof result.catch === "function") {
+    result.catch((err) => {
+      console.error(`\n❌ Error: ${err.message}`);
+      process.exit(1);
+    });
+  }
 } else {
   console.error(`Unknown command: ${command}`);
   commands.help();

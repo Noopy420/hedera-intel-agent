@@ -7,6 +7,7 @@ const { IntelEngine } = require("./src/intel");
 const { HederaService } = require("./src/hedera");
 const { NetworkAnalytics } = require("./src/network");
 const { AgentProtocol, PROTOCOL_NAME, PROTOCOL_VERSION } = require("./src/agent-protocol");
+const { OpenConvAIAgent, AGENT_NAME, AGENT_DESCRIPTION, AGENT_CAPABILITIES } = require("./src/hcs10");
 
 let passed = 0;
 let failed = 0;
@@ -151,6 +152,67 @@ async function runTests() {
   // Test non-protocol message (should be ignored)
   const ignored = await protocol.processMessage('{"random": "data"}');
   assert(ignored === null, "Non-protocol messages ignored");
+
+  // ─── Test 13: HCS-10 OpenConvAI Module ──────────
+  console.log("\nTest 13: HCS-10 OpenConvAI Module");
+  assert(AGENT_NAME === "HederaIntel", "Agent name is HederaIntel");
+  assert(AGENT_DESCRIPTION.length > 50, "Agent description is detailed");
+  assert(AGENT_CAPABILITIES.includes("market_report"), "Has market_report capability");
+  assert(AGENT_CAPABILITIES.includes("natural_language_query"), "Has NL query capability");
+
+  const convAgent = new OpenConvAIAgent(engine, net);
+  assert(convAgent !== null, "OpenConvAIAgent instantiates");
+  assert(convAgent.client === null, "Client starts null (not connected)");
+  assert(convAgent.connections instanceof Map, "Has connections map");
+
+  // ─── Test 14: HCS-10 Natural Language Routing ────
+  console.log("\nTest 14: HCS-10 Natural Language Routing");
+
+  // Test price query routing
+  const priceResponse = await convAgent._processQuery("What's the price of BTC?");
+  assert(priceResponse.type === "price_check", "Routes price query correctly");
+  assert(priceResponse.assets !== undefined, "Price response has assets");
+
+  // Test narrative query routing
+  const narrativeResponse = await convAgent._processQuery("What are the current market trends?");
+  assert(narrativeResponse.type === "narrative_detection", "Routes narrative query correctly");
+  assert(narrativeResponse.narratives !== undefined, "Narrative response has data");
+
+  // Test hedera network query routing
+  const hederaResponse = await convAgent._processQuery("How is the Hedera network doing?");
+  assert(hederaResponse.type === "hedera_intelligence", "Routes Hedera query correctly");
+  assert(hederaResponse.networkHealth !== undefined, "Has network health data");
+
+  // Test capabilities query routing
+  const capabilitiesResponse = await convAgent._processQuery("What can you do?");
+  assert(capabilitiesResponse.type === "capabilities", "Routes capabilities query correctly");
+  assert(capabilitiesResponse.capabilities.length > 0, "Lists capabilities");
+
+  // Test default fallback to full report
+  const generalResponse = await convAgent._processQuery("Give me a full market report");
+  assert(generalResponse.type === "market_report", "Default routes to market_report");
+  assert(generalResponse.summary !== undefined, "Full report has summary");
+
+  // ─── Test 15: Asset Extraction from NL ────────────
+  console.log("\nTest 15: Asset Extraction from Natural Language");
+  const btcEth = convAgent._extractAssets("what is the price of bitcoin and ethereum?");
+  assert(btcEth !== null, "Extracts assets from sentence");
+  assert(btcEth.includes("BTC"), "Finds BTC");
+  assert(btcEth.includes("ETH"), "Finds ETH");
+
+  const hbar = convAgent._extractAssets("hedera network health");
+  assert(hbar !== null, "Extracts HBAR from 'hedera'");
+  assert(hbar.includes("HBAR"), "Maps 'hedera' to HBAR");
+
+  const noAssets = convAgent._extractAssets("give me a report");
+  assert(noAssets === null, "Returns null when no assets found");
+
+  // ─── Test 16: HCS-10 Agent Status ────────────────
+  console.log("\nTest 16: HCS-10 Agent Status");
+  const status = convAgent.getStatus();
+  assert(status.agent === "HederaIntel", "Status has agent name");
+  assert(status.capabilities.length === AGENT_CAPABILITIES.length, "Status has all capabilities");
+  assert(status.connections === 0, "Starts with 0 connections");
 
   // Summary
   console.log("\n───────────────────────────────────────────────────");

@@ -11,7 +11,9 @@
     "setup": "node index.js setup",
     "demo": "node index.js demo",
     "subscribe": "node index.js subscribe",
-    "test": "node test.js"
+    "test": "node test.js",
+    "openconvai": "node index.js openconvai",
+    "chat": "node index.js chat"
   },
   "keywords": [
     "hedera",
@@ -27,6 +29,7 @@
   "type": "commonjs",
   "dependencies": {
     "@hashgraph/sdk": "^2.80.0",
+    "@hashgraphonline/standards-sdk": "^0.0.50",
     "dotenv": "^17.3.1"
   },
   "engines": {

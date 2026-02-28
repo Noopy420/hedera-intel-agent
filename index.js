@@ -10,6 +10,8 @@
  * Usage:
  *   node index.js setup          — Create a new HCS topic
  *   node index.js report          — Generate and publish a report
+ *   node index.js network         — Hedera network health analytics
+ *   node index.js listen          — Start agent protocol listener
  *   node index.js subscribe       — Live-stream reports from the topic
  *   node index.js info            — Show topic info and stats
  *   node index.js demo            — Run a full demo cycle
@@ -22,11 +24,14 @@ require("dotenv").config();
 
 const { HederaService } = require("./src/hedera");
 const { IntelEngine } = require("./src/intel");
+const { NetworkAnalytics } = require("./src/network");
+const { AgentProtocol } = require("./src/agent-protocol");
 const fs = require("fs");
 const path = require("path");
 
 const hedera = new HederaService();
 const intel = new IntelEngine();
+const network = new NetworkAnalytics(process.env.HEDERA_NETWORK || "testnet");
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -234,6 +239,84 @@ async function demo() {
   return { topicId, results };
 }
 
+async function networkHealth() {
+  console.log("\n╔══════════════════════════════════════════════════╗");
+  console.log("║     HederaIntel Agent — Network Analytics        ║");
+  console.log("╚══════════════════════════════════════════════════╝\n");
+
+  const report = await network.generateNetworkReport();
+
+  console.log(`  Network:     ${report.network}`);
+  console.log(`  Health:      ${report.healthScore}/100`);
+
+  if (report.supply) {
+    console.log(`\n  ─── Supply ───`);
+    console.log(`  Total:       ${report.supply.totalSupply} HBAR`);
+    console.log(`  Released:    ${report.supply.releasedSupply} HBAR`);
+  }
+
+  if (report.hcsActivity) {
+    console.log(`\n  ─── HCS Activity (recent) ───`);
+    console.log(`  Messages:    ${report.hcsActivity.messageCount}`);
+    console.log(`  Topics:      ${report.hcsActivity.uniqueTopics || 0}`);
+    if (report.hcsActivity.avgIntervalSeconds) {
+      console.log(`  Avg interval: ${report.hcsActivity.avgIntervalSeconds}s`);
+    }
+  }
+
+  if (report.transactions) {
+    console.log(`\n  ─── Transactions (recent) ───`);
+    console.log(`  Count:       ${report.transactions.count}`);
+    console.log(`  Total HBAR:  ${report.transactions.totalHbar}`);
+    console.log(`  Avg/tx:      ${report.transactions.avgHbarPerTx} HBAR`);
+  }
+
+  if (report.nodes) {
+    console.log(`\n  ─── Nodes ───`);
+    console.log(`  Total:       ${report.nodes.totalNodes}`);
+    console.log(`  Consensus:   ${report.nodes.consensusNodes}`);
+  }
+
+  console.log();
+
+  // Also publish to HCS if connected
+  if (CONFIG.accountId && CONFIG.topicId) {
+    await hedera.initialize(CONFIG.accountId, CONFIG.privateKey, CONFIG.network);
+    hedera.setTopicId(CONFIG.topicId);
+    console.log("[Agent] Publishing network report to HCS...");
+    const txResult = await hedera.publishReport({
+      title: "Hedera Network Health Report",
+      summary: JSON.stringify(report),
+    });
+    console.log(`✅ Published: ${txResult.hashscanUrl}\n`);
+  }
+
+  return report;
+}
+
+async function listen() {
+  console.log("\n╔══════════════════════════════════════════════════╗");
+  console.log("║     HederaIntel Agent — Protocol Listener        ║");
+  console.log("╚══════════════════════════════════════════════════╝\n");
+
+  if (!CONFIG.accountId || !CONFIG.topicId) {
+    console.error("Error: Set HEDERA_ACCOUNT_ID, HEDERA_PRIVATE_KEY, and HEDERA_TOPIC_ID.");
+    console.error("Run 'node index.js setup' first.");
+    process.exit(1);
+  }
+
+  await hedera.initialize(CONFIG.accountId, CONFIG.privateKey, CONFIG.network);
+  hedera.setTopicId(CONFIG.topicId);
+
+  const protocol = new AgentProtocol(hedera, intel);
+
+  console.log("Starting agent protocol listener...");
+  console.log("Other agents can query this topic for market intelligence.");
+  console.log("Press Ctrl+C to stop.\n");
+
+  await protocol.startListening();
+}
+
 // ─── CLI Router ─────────────────────────────────────────────────────────────
 
 const command = process.argv[2] || "help";
@@ -241,6 +324,8 @@ const command = process.argv[2] || "help";
 const commands = {
   setup,
   report: generateAndPublish,
+  network: networkHealth,
+  listen,
   subscribe,
   info,
   demo,
@@ -251,6 +336,8 @@ HederaIntel Agent — Autonomous Market Intelligence on Hedera
 Usage:
   node index.js setup        Create a new HCS topic
   node index.js report       Generate and publish a market report
+  node index.js network      Hedera network health analytics
+  node index.js listen       Start agent-to-agent protocol listener
   node index.js subscribe    Live-stream reports from the topic
   node index.js info         Show topic info and stats
   node index.js demo         Run a full demo (setup + 3 reports)
@@ -261,6 +348,10 @@ Environment Variables (set in .env):
   HEDERA_PRIVATE_KEY   Your Hedera private key
   HEDERA_NETWORK       testnet or mainnet (default: testnet)
   HEDERA_TOPIC_ID      Existing topic ID (optional)
+
+Agent Protocol:
+  Other agents can query this agent via HCS messages.
+  Query types: market_report, price_check, narrative_detection, capabilities
 `);
   },
 };

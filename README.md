@@ -83,6 +83,8 @@ node index.js demo
 |---------|-------------|
 | `node index.js setup` | Create a new HCS topic for your agent |
 | `node index.js report` | Generate and publish a market intelligence report |
+| `node index.js network` | Real-time Hedera network health analytics |
+| `node index.js listen` | Start agent-to-agent protocol listener |
 | `node index.js subscribe` | Live-stream reports from the topic |
 | `node index.js info` | Show topic info and message count |
 | `node index.js demo` | Run a complete demo (setup + 3 reports) |
@@ -120,6 +122,46 @@ Active Signals:
    Verify:      https://hashscan.io/testnet/topic/0.0.XXXXXX
 ```
 
+## 🤖 Agent-to-Agent Protocol
+
+HederaIntel implements a lightweight agent communication protocol over HCS. Other agents can query our topic and receive structured intelligence responses — all timestamped and verifiable on-chain.
+
+### Protocol Format
+```json
+// Query (sent by any agent)
+{
+  "protocol": "hedera-intel",
+  "type": "query",
+  "queryType": "market_report",
+  "assets": ["BTC", "ETH", "HBAR"]
+}
+
+// Response (sent by HederaIntel)
+{
+  "protocol": "hedera-intel",
+  "type": "response",
+  "queryType": "market_report",
+  "status": "ok",
+  "report": { ... }
+}
+```
+
+### Supported Query Types
+| Query | Description |
+|-------|-------------|
+| `capabilities` | List available query types and agent info |
+| `market_report` | Full market intelligence report |
+| `price_check` | Current prices for specified assets |
+| `narrative_detection` | Trending narratives with confidence scores |
+
+### Network Analytics
+The agent also provides real-time Hedera network health analytics via the Mirror Node API:
+- HBAR supply and release schedule
+- HCS message throughput and topic activity
+- Transaction volume and average values
+- Consensus node count and status
+- Composite health score (0-100)
+
 ## 🔮 Why This Matters
 
 ### For the AI Agent Economy
@@ -142,9 +184,11 @@ HederaIntel can sustain itself as a:
 
 - **Language**: JavaScript/Node.js
 - **Hedera SDK**: @hashgraph/sdk v2.x
-- **Data Sources**: CoinGecko API (prices), extensible to Messari, CryptoCompare
+- **Data Sources**: CoinGecko API (prices), Hedera Mirror Node (network stats)
 - **Message Format**: JSON with SHA-256 content hash
+- **Agent Protocol**: Custom query/response protocol over HCS
 - **Chunking**: Automatic message chunking for reports > 1024 bytes
+- **Tests**: 43/43 passing (includes live Mirror Node integration tests)
 - **License**: MIT
 
 ## 📜 License

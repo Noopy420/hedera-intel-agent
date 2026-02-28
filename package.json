@@ -1,0 +1,35 @@
+{
+  "name": "hedera-intel-agent",
+  "version": "1.0.0",
+  "description": "Autonomous AI market intelligence agent with Hedera Consensus Service timestamping",
+  "main": "index.js",
+  "bin": {
+    "hedera-intel": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js report",
+    "setup": "node index.js setup",
+    "demo": "node index.js demo",
+    "subscribe": "node index.js subscribe",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "hedera",
+    "ai-agent",
+    "market-intelligence",
+    "hcs",
+    "consensus",
+    "crypto",
+    "autonomous"
+  ],
+  "author": "MakeMoney Room",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@hashgraph/sdk": "^2.80.0",
+    "dotenv": "^17.3.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
